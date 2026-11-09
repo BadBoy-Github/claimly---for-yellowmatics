@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { templateExists } from '../../../src/server/services/claimFiles.js';
+import { isCloudinaryConfigured } from '../../../src/server/services/cloudinary.js';
 import connectDB from '../../../src/lib/db.js';
 
 export const runtime = 'nodejs';
@@ -22,5 +23,6 @@ export async function GET() {
     template: template ? 'available' : 'missing',
     gemini: process.env.GEMINI_API_KEY ? 'configured' : 'not_configured',
     email: process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD ? 'configured' : 'not_configured',
+    storage: isCloudinaryConfigured() ? 'configured' : 'not_configured',
   }, { status: database ? 200 : 503 });
 }

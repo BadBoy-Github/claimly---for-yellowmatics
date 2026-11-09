@@ -12,12 +12,22 @@ const expenseSchema = new mongoose.Schema(
   { _id: true },
 );
 
+const billFileSchema = new mongoose.Schema(
+  {
+    publicId: { type: String, required: true },
+    name: { type: String, required: true, maxlength: 255 },
+  },
+  { _id: false },
+);
+
 const claimSchema = new mongoose.Schema(
   {
     month: { type: String, required: true, match: /^\d{4}-\d{2}$/ },
     name: { type: String, default: 'Elayabarathi M V' },
     email: { type: String, default: 'elayabarathimv@gmail.com' },
     expenses: { type: [expenseSchema], default: [] },
+    billFiles: { type: [billFileSchema], default: [] },
+    pdfPublicId: { type: String, default: null },
     status: { type: String, enum: ['draft', 'submitted'], default: 'draft' },
     submittedAt: { type: Date, default: null },
     submittedTo: { type: [String], default: [] },

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { upload } from '@vercel/blob/client';
 import {
   FiArrowLeft,
   FiArrowRight,
@@ -142,11 +141,32 @@ function Dashboard() {
       if (!files.length) throw new Error('Attach at least one bill PDF before sending the claim.');
       const claim = await saveClaim(false);
       const bills = await Promise.all(files.map(async (file) => {
-        const blob = await upload(`claim-bills/${crypto.randomUUID()}-${file.name}`, file, {
-          access: 'private',
-          handleUploadUrl: '/api/claims/upload',
+        const uploadInfo = await api.createBillUpload(claim._id, file);
+        const formData = new FormData();
+        formData.set('file', file);
+        for (const [key, value] of Object.entries(uploadInfo)) {
+          if (!['publicId', 'upload_url', 'cloud_name', 'resource_type', 'name'].includes(key)) {
+            formData.set(key, String(value));
+          }
+        }
+        const response = await fetch(uploadInfo.upload_url, {
+          method: 'POST',
+          body: formData,
         });
-        return { pathname: blob.pathname, name: file.name };
+        const uploaded = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(uploaded.error?.message || `Cloudinary rejected ${file.name} (HTTP ${response.status}).`);
+        }
+        if (
+          uploaded.public_id !== uploadInfo.public_id
+          || uploaded.resource_type !== 'image'
+          || uploaded.type !== 'authenticated'
+          || uploaded.format !== 'pdf'
+          || uploaded.bytes > 10 * 1024 * 1024
+        ) {
+          throw new Error(`Cloudinary did not store ${file.name} as a valid private PDF.`);
+        }
+        return { publicId: uploaded.public_id, name: file.name };
       }));
       await api.submitClaim(claim._id, bills);
       setClaimStatus('submitted');
@@ -241,6 +261,15 @@ function Dashboard() {
               <div>
                 <p className="font-bold">Add your claim workbook</p>
                 <p className="mt-1 text-sm text-muted">Place the Excel template at <code>public/claim-template.xlsx</code> to enable exports and email submission.</p>
+              </div>
+            </div>
+          )}
+          {apiReady && health?.storage !== 'configured' && (
+            <div className="setup-alert">
+              <FiLock aria-hidden="true" />
+              <div>
+                <p className="font-bold">Cloudinary is not configured</p>
+                <p className="mt-1 text-sm text-muted">Set <code>CLOUDINARY_CLOUD_NAME</code>, <code>CLOUDINARY_API_KEY</code>, and <code>CLOUDINARY_API_SECRET</code> in your environment.</p>
               </div>
             </div>
           )}
@@ -376,7 +405,7 @@ function Dashboard() {
                     {busy ? <FiRefreshCw className="spin" aria-hidden="true" /> : <FiCheck aria-hidden="true" />}
                     Save claim
                   </button>
-                  <button className="button-submit" onClick={handleSubmit} disabled={busy || !apiReady || !expenses.length || claimStatus === 'submitted' || health?.template !== 'available' || health?.email !== 'configured'}>
+                  <button className="button-submit" onClick={handleSubmit} disabled={busy || !apiReady || !expenses.length || claimStatus === 'submitted' || health?.template !== 'available' || health?.email !== 'configured' || health?.storage !== 'configured'}>
                     {busy ? <FiRefreshCw className="spin" aria-hidden="true" /> : <FiSend aria-hidden="true" />}
                     {claimStatus === 'submitted' ? 'Submitted' : 'Send claim'}
                   </button>

@@ -91,6 +91,11 @@ export default function HistoryPage() {
                     <div className="history-downloads">
                       <a href={`/api/claims/${claim._id}/export.xlsx`} aria-label={`Download ${monthLabel(claim.month)} claim Excel`}><FiDownload aria-hidden="true" /><span>Excel</span></a>
                       <a href={`/api/claims/${claim._id}/export.pdf`} aria-label={`Download ${monthLabel(claim.month)} claim PDF`}><FiDownload aria-hidden="true" /><span>PDF</span></a>
+                      {(claim.billFiles || []).filter((bill) => bill.publicId).map((bill, index) => (
+                        <a href={`/api/claims/${claim._id}/bills/${index}`} aria-label={`Download supporting bill ${bill.name}`} key={bill.publicId}>
+                          <FiDownload aria-hidden="true" /><span>Bill {index + 1}</span>
+                        </a>
+                      ))}
                     </div>
                   </article>
                 );

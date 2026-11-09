@@ -1,32 +1,40 @@
-import { handleUpload } from '@vercel/blob/client';
+import { randomUUID } from 'node:crypto';
+import mongoose from 'mongoose';
+import Claim from '../../../../src/server/models/Claim.js';
+import { createCloudinaryUploadParams } from '../../../../src/server/services/cloudinary.js';
+import connectDB from '../../../../src/lib/db.js';
 import { apiError, invalidRequest } from '../../../../src/lib/http.js';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
 
 export async function POST(request) {
   try {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      const error = new Error('Connect a Vercel Blob store before uploading claim bills.');
-      error.status = 503;
-      throw error;
+    const { claimId, name, size, type } = await request.json();
+    if (!mongoose.isValidObjectId(claimId)) {
+      throw invalidRequest('Save the claim before uploading supporting bills.');
     }
-    const body = await request.json();
-    const response = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async (pathname) => {
-        if (!pathname.startsWith('claim-bills/') || !pathname.toLowerCase().endsWith('.pdf')) {
-          throw invalidRequest('Supporting bills must be PDF files.');
-        }
-        return {
-          addRandomSuffix: true,
-          allowedContentTypes: ['application/pdf'],
-          maximumSizeInBytes: 10 * 1024 * 1024,
-        };
-      },
-    });
-    return Response.json(response);
+    await connectDB();
+    const claim = await Claim.findById(claimId).select('_id status').lean();
+    if (!claim) return Response.json({ error: 'Claim not found.' }, { status: 404 });
+    if (claim.status === 'submitted') {
+      return Response.json({ error: 'This claim has already been submitted.' }, { status: 409 });
+    }
+    if (
+      typeof name !== 'string'
+      || name.length > 255
+      || !name.toLowerCase().endsWith('.pdf')
+      || /[\\/\r\n]/.test(name)
+      || type !== 'application/pdf'
+      || !Number.isInteger(size)
+      || size < 1
+      || size > 10 * 1024 * 1024
+    ) {
+      throw invalidRequest('Each supporting bill must be a PDF no larger than 10 MB.');
+    }
+
+    const publicId = `claim-bills/${claimId}/${randomUUID()}`;
+    const upload = createCloudinaryUploadParams(publicId);
+    return Response.json({ publicId, name, ...upload });
   } catch (error) {
     return apiError(error, 'The bill upload could not be started.');
   }

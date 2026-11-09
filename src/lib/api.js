@@ -23,6 +23,10 @@ export const api = {
   getClaim: (month) => request(`/api/claims?month=${encodeURIComponent(month)}`),
   getHistory: () => request('/api/claims?history=true'),
   saveClaim: (claim) => request('/api/claims', { method: 'POST', body: JSON.stringify(claim) }),
+  createBillUpload: (claimId, file) => request('/api/claims/upload', {
+    method: 'POST',
+    body: JSON.stringify({ claimId, name: file.name, size: file.size, type: file.type }),
+  }),
   getSettings: () => request('/api/settings'),
   saveSettings: (settings) => request('/api/settings', { method: 'PUT', body: JSON.stringify(settings) }),
   getInsight: (month) => request('/api/assistant/insights', { method: 'POST', body: JSON.stringify({ month }) }),
