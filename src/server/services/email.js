@@ -30,7 +30,9 @@ export async function sendClaimEmail({ claim, settings, pdfBuffer, billFiles, su
     to: settings.to,
     cc: settings.cc,
     subject,
-    text: `Please find the ${safeMonth} expense claim and supporting bill PDFs attached.`,
+    text: billFiles.length
+      ? `Please find the ${safeMonth} expense claim and supporting bill PDFs attached.`
+      : `Please find the ${safeMonth} expense claim attached.`,
     attachments,
   });
 }

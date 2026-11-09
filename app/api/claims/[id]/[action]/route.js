@@ -31,12 +31,11 @@ function isValidBill(bill, claimId) {
 async function loadBills(bills, claimId) {
   if (
     !Array.isArray(bills)
-    || bills.length < 1
     || bills.length > 5
     || !bills.every((bill) => isValidBill(bill, claimId))
     || new Set(bills.map(({ publicId }) => publicId)).size !== bills.length
   ) {
-    const error = new Error('Attach between one and five PDF bills before sending the claim.');
+    const error = new Error('Choose up to five valid PDF bills before sending the claim.');
     error.status = 400;
     throw error;
   }
@@ -143,7 +142,7 @@ export async function POST(request, context) {
     }
 
     const payload = await request.json();
-    const submittedBills = payload?.bills;
+    const submittedBills = payload?.bills ?? claim.billFiles ?? [];
     const bills = await loadBills(submittedBills, id);
     const settings = await Settings.findOne({ key: 'default' }).lean();
     if (!settings?.to?.length) return Response.json({ error: 'Add at least one primary recipient first.' }, { status: 400 });

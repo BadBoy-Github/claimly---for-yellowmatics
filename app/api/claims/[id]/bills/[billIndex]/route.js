@@ -23,7 +23,7 @@ export async function GET(_request, context) {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Length': String(buffer.length),
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(bill.name)}`,
+        'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(bill.name)}`,
       },
     });
   } catch (error) {

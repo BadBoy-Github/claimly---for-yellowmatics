@@ -27,6 +27,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ claimId, name: file.name, size: file.size, type: file.type }),
   }),
+  saveBills: (claimId, bills) => request(`/api/claims/${claimId}/bills`, {
+    method: 'PUT',
+    body: JSON.stringify({ bills }),
+  }),
   getSettings: () => request('/api/settings'),
   saveSettings: (settings) => request('/api/settings', { method: 'PUT', body: JSON.stringify(settings) }),
   getInsight: (month) => request('/api/assistant/insights', { method: 'POST', body: JSON.stringify({ month }) }),

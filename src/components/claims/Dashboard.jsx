@@ -59,6 +59,7 @@ function Dashboard() {
       setExpenses([]);
       setClaimId(null);
       setClaimStatus('draft');
+      setFiles([]);
       return;
     }
     if (service.database !== 'connected') {
@@ -76,13 +77,14 @@ function Dashboard() {
       setExpenses(claim?.expenses ?? []);
       setClaimId(claim?._id ?? null);
       setClaimStatus(claim?.status ?? 'draft');
+      setFiles(claim?.billFiles ?? []);
     } catch (requestError) {
       showToast(requestError.message, 'error');
       setExpenses([]);
       setClaimId(null);
       setClaimStatus('draft');
+      setFiles([]);
     }
-    setFiles([]);
     setFileInputKey((key) => key + 1);
     setInsight('');
     setEditingIndex(null);
@@ -138,41 +140,10 @@ function Dashboard() {
   async function handleSubmit() {
     setBusy(true);
     try {
-      if (!files.length) throw new Error('Attach at least one bill PDF before sending the claim.');
       const claim = await saveClaim(false);
-      const bills = await Promise.all(files.map(async (file) => {
-        const uploadInfo = await api.createBillUpload(claim._id, file);
-        const formData = new FormData();
-        formData.set('file', file);
-        for (const [key, value] of Object.entries(uploadInfo)) {
-          if (!['publicId', 'upload_url', 'cloud_name', 'resource_type', 'name'].includes(key)) {
-            formData.set(key, String(value));
-          }
-        }
-        const response = await fetch(uploadInfo.upload_url, {
-          method: 'POST',
-          body: formData,
-        });
-        const uploaded = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(uploaded.error?.message || `Cloudinary rejected ${file.name} (HTTP ${response.status}).`);
-        }
-        if (
-          uploaded.public_id !== uploadInfo.public_id
-          || uploaded.resource_type !== 'image'
-          || uploaded.type !== 'authenticated'
-          || uploaded.format !== 'pdf'
-          || uploaded.bytes > 10 * 1024 * 1024
-        ) {
-          throw new Error(`Cloudinary did not store ${file.name} as a valid private PDF.`);
-        }
-        return { publicId: uploaded.public_id, name: file.name };
-      }));
-      await api.submitClaim(claim._id, bills);
+      await api.submitClaim(claim._id, files);
       setClaimStatus('submitted');
       showToast('Claim email sent successfully.');
-      setFiles([]);
-      setFileInputKey((key) => key + 1);
     } catch (requestError) {
       showToast(requestError.message, 'error');
     } finally {
@@ -194,30 +165,79 @@ function Dashboard() {
     }
   }
 
-  function updateFiles(fileList) {
+  async function updateFiles(fileList) {
     const selected = Array.from(fileList || []);
+    if (!selected.length) return;
     const invalid = selected.find((file) => file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf'));
     if (invalid) {
       showToast(`${invalid.name} is not a PDF file.`, 'error');
-      setFiles([]);
       setFileInputKey((key) => key + 1);
       return;
     }
     const tooLarge = selected.find((file) => file.size > 10 * 1024 * 1024);
     if (tooLarge) {
       showToast(`${tooLarge.name} is larger than the 10 MB per-file limit.`, 'error');
-      setFiles([]);
       setFileInputKey((key) => key + 1);
       return;
     }
-    if (selected.length > 5) {
+    if (files.length + selected.length > 5) {
       showToast('You can attach up to five bill PDFs.', 'error');
-      setFiles([]);
       setFileInputKey((key) => key + 1);
       return;
     }
-    setFiles(selected);
-    if (selected.length) showToast(`${selected.length} bill${selected.length === 1 ? '' : 's'} ready to upload.`);
+    setBusy(true);
+    try {
+      const claim = await saveClaim(false);
+      const uploadedBills = await Promise.all(selected.map(async (file) => {
+        const uploadInfo = await api.createBillUpload(claim._id, file);
+        const formData = new FormData();
+        formData.set('file', file);
+        for (const [key, value] of Object.entries(uploadInfo)) {
+          if (!['publicId', 'upload_url', 'cloud_name', 'resource_type', 'name'].includes(key)) {
+            formData.set(key, String(value));
+          }
+        }
+        const response = await fetch(uploadInfo.upload_url, { method: 'POST', body: formData });
+        const uploaded = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(uploaded.error?.message || `Cloudinary rejected ${file.name} (HTTP ${response.status}).`);
+        }
+        if (
+          uploaded.public_id !== uploadInfo.public_id
+          || uploaded.resource_type !== 'image'
+          || uploaded.type !== 'authenticated'
+          || uploaded.format !== 'pdf'
+          || uploaded.bytes > 10 * 1024 * 1024
+        ) {
+          throw new Error(`Cloudinary did not store ${file.name} as a valid private PDF.`);
+        }
+        return { publicId: uploaded.public_id, name: file.name };
+      }));
+      const result = await api.saveBills(claim._id, [...files, ...uploadedBills]);
+      setFiles(result.bills);
+      setFileInputKey((key) => key + 1);
+      showToast(`${uploadedBills.length} bill${uploadedBills.length === 1 ? '' : 's'} saved with this claim.`);
+    } catch (requestError) {
+      showToast(requestError.message, 'error');
+      setFileInputKey((key) => key + 1);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeBill(bill) {
+    if (!claimId) return;
+    setBusy(true);
+    try {
+      const remainingBills = files.filter((item) => item.publicId !== bill.publicId);
+      const result = await api.saveBills(claimId, remainingBills);
+      setFiles(result.bills);
+      showToast(`${bill.name} removed from this claim.`);
+    } catch (requestError) {
+      showToast(requestError.message, 'error');
+    } finally {
+      setBusy(false);
+    }
   }
 
   const monthStatus = claimStatus === 'submitted' ? 'Submitted' : claimId ? 'Saved draft' : 'Draft';
@@ -384,7 +404,7 @@ function Dashboard() {
             <div className="panel-header submit-header">
               <div className="heading-with-icon">
                 <div className="section-icon section-icon-orange"><FiFolder aria-hidden="true" /></div>
-                <div><h2 className="panel-title">Bills & submission</h2><p className="panel-subtitle">Attach your receipts and send the completed claim.</p></div>
+                <div><h2 className="panel-title">Bills & submission</h2><p className="panel-subtitle">Bills are optional; the completed claim PDF is always attached.</p></div>
               </div>
               <div className="file-format-note"><FiFileText aria-hidden="true" /> PDF only · up to 5 files · 10 MB each</div>
             </div>
@@ -396,7 +416,7 @@ function Dashboard() {
                   <span className="upload-title">Choose bill PDFs</span>
                   <span className="upload-caption">or browse files from your device</span>
                 </label>
-                {files.length > 0 && <div className="file-list">{files.map((file) => <div key={`${file.name}-${file.lastModified}`}><FiFileText aria-hidden="true" /><span>{file.name}</span><button aria-label={`Remove ${file.name}`} onClick={() => setFiles((items) => items.filter((item) => item !== file))}><FiX aria-hidden="true" /></button></div>)}</div>}
+                {files.length > 0 && <div className="file-list">{files.map((file, index) => <div key={file.publicId}><FiFileText aria-hidden="true" /><a href={`/api/claims/${claimId}/bills/${index}`} target="_blank" rel="noreferrer" title={`Preview ${file.name}`}>{file.name}</a>{claimStatus !== 'submitted' && <button aria-label={`Remove ${file.name}`} onClick={() => removeBill(file)} disabled={busy}><FiX aria-hidden="true" /></button>}</div>)}</div>}
               </div>
               <div className="submit-actions">
                 <p className="recipient-preview"><FiMail aria-hidden="true" /><span>Recipients are managed in <a href="/settings">Email settings</a>.</span></p>
