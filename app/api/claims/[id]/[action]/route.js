@@ -1,8 +1,14 @@
 import mongoose from 'mongoose';
 import Claim from '../../../../../src/server/models/Claim.js';
 import Settings from '../../../../../src/server/models/Settings.js';
-import { claimFileBase, generateClaimFiles, templateExists } from '../../../../../src/server/services/claimFiles.js';
+import {
+  claimFileBase,
+  generateClaimFiles,
+  generateClaimWorkbook,
+  templateExists,
+} from '../../../../../src/server/services/claimFiles.js';
 import { isCloudinaryConfigured, readCloudinaryPdf, uploadCloudinaryPdf } from '../../../../../src/server/services/cloudinary.js';
+import { isGoogleDriveConfigured } from '../../../../../src/server/services/googleDrive.js';
 import { sendClaimEmail } from '../../../../../src/server/services/email.js';
 import connectDB from '../../../../../src/lib/db.js';
 import { apiError } from '../../../../../src/lib/http.js';
@@ -52,8 +58,11 @@ async function loadBills(bills, claimId) {
 }
 
 export async function GET(_request, context) {
+  let action;
   try {
-    const { id, action } = await context.params;
+    const params = await context.params;
+    const { id } = params;
+    action = params.action;
     if (!mongoose.isValidObjectId(id)) return Response.json({ error: 'Claim not found.' }, { status: 404 });
     if (!['export.xlsx', 'export.pdf'].includes(action)) {
       return Response.json({ error: 'Choose xlsx or pdf format.' }, { status: 400 });
@@ -66,7 +75,7 @@ export async function GET(_request, context) {
       if (!await templateExists()) {
         return Response.json({ error: 'Claim template not found. Add your Excel file as public/claim-template.xlsx.' }, { status: 503 });
       }
-      const { workbookBuffer } = await generateClaimFiles(claim);
+      const workbookBuffer = await generateClaimWorkbook(claim);
       return new Response(workbookBuffer, {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -75,11 +84,16 @@ export async function GET(_request, context) {
       });
     }
     let pdfBuffer;
-    if (claim.pdfPublicId) {
+    if (claim.status === 'submitted' && claim.pdfPublicId) {
       pdfBuffer = await readCloudinaryPdf(claim.pdfPublicId);
     } else {
       if (!await templateExists()) {
         return Response.json({ error: 'Claim template not found. Add your Excel file as public/claim-template.xlsx.' }, { status: 503 });
+      }
+      if (!isGoogleDriveConfigured()) {
+        const error = new Error('Configure Google Drive OAuth credentials before generating a claim PDF.');
+        error.status = 503;
+        throw error;
       }
       ({ pdfBuffer } = await generateClaimFiles(claim));
     }
@@ -92,7 +106,11 @@ export async function GET(_request, context) {
   } catch (error) {
     return apiError(
       error,
-      error?.status === 503 ? 'Claim file service is unavailable. Check the Cloudinary and Gemini configuration.' : undefined,
+      error?.status >= 500
+        ? action === 'export.xlsx'
+          ? 'The claim workbook could not be generated. Check the claim template and Gemini configuration.'
+          : 'The claim PDF could not be generated or retrieved. Check Google Drive OAuth/API access and Cloudinary storage.'
+        : undefined,
     );
   }
 }
@@ -117,6 +135,11 @@ export async function POST(request, context) {
     if (!claim.expenses.length) return Response.json({ error: 'Add at least one expense before sending.' }, { status: 400 });
     if (!await templateExists()) {
       return Response.json({ error: 'Claim template not found. Add your Excel file as public/claim-template.xlsx.' }, { status: 503 });
+    }
+    if (!isGoogleDriveConfigured()) {
+      const error = new Error('Configure Google Drive OAuth credentials before sending claims.');
+      error.status = 503;
+      throw error;
     }
 
     const payload = await request.json();
@@ -151,8 +174,8 @@ export async function POST(request, context) {
     return apiError(
       error,
       error?.status === 503
-        ? 'Claim submission is not configured. Check Cloudinary, Gemini, and the claim template settings.'
-        : 'The claim could not be completed. Check Cloudinary credentials and try again.',
+        ? 'Claim submission is not configured. Check Cloudinary, Google Drive OAuth, and the claim template settings.'
+        : 'The claim could not be completed. Check Cloudinary storage, Google Drive OAuth/API access, and Gmail settings.',
     );
   }
 }
