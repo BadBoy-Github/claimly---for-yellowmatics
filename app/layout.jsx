@@ -3,6 +3,7 @@ import './globals.css';
 export const metadata = {
   title: 'Claimly — Monthly claims',
   description: 'A calm, private workspace for preparing monthly expense claims.',
+  robots: { index: false, follow: false },
   icons: {
     icon: '/icon.svg',
   },

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { FiArchive, FiChevronDown, FiCircle, FiFileText, FiMail, FiShield } from 'react-icons/fi';
+import { FiArchive, FiChevronDown, FiCircle, FiFileText, FiLogOut, FiMail, FiShield } from 'react-icons/fi';
 
 const OWNER = 'Elayabarathi M V';
 
@@ -49,9 +49,14 @@ export default function WorkspaceLayout({ active, title, connected, children }) 
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div>
-          <div className={`connection-pill ${connected ? 'connection-online' : 'connection-offline'}`}>
-            <FiCircle className="status-dot" aria-hidden="true" />
-            {connected ? 'All changes synced' : 'API connection needed'}
+          <div className="topbar-actions">
+            <div className={`connection-pill ${connected ? 'connection-online' : 'connection-offline'}`}>
+              <FiCircle className="status-dot" aria-hidden="true" />
+              {connected ? 'All changes synced' : 'API connection needed'}
+            </div>
+            <form action="/api/auth/logout" method="post">
+              <button type="submit" className="topbar-logout"><FiLogOut aria-hidden="true" /><span>Sign out</span></button>
+            </form>
           </div>
         </header>
         {children}

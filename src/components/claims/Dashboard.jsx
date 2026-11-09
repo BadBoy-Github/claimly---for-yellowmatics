@@ -441,15 +441,16 @@ function Dashboard() {
   );
 }
 
-export function ErrorPage({ forbidden = false }) {
+export function ErrorPage({ forbidden = false, reason }) {
+  const loginRejected = forbidden && reason === 'login';
   return (
     <main className="error-page">
       <div className="error-card">
         <div className="error-icon">{forbidden ? <FiShield aria-hidden="true" /> : <FiFileText aria-hidden="true" />}</div>
         <span className="eyebrow">{forbidden ? '403 · ACCESS RESTRICTED' : '404 · PAGE NOT FOUND'}</span>
-        <h1>{forbidden ? 'This page is off limits.' : 'Looks like a wrong turn.'}</h1>
-        <p>{forbidden ? 'You don’t have permission to view this page.' : 'The page you’re looking for doesn’t exist or has moved.'}</p>
-        <a className="button-primary" href="/"><FiArrowLeft aria-hidden="true" /> Back to dashboard</a>
+        <h1>{loginRejected ? 'Sign-in was not accepted.' : forbidden ? 'This page is off limits.' : 'Looks like a wrong turn.'}</h1>
+        <p>{loginRejected ? 'The email or password is incorrect, or sign-in is temporarily locked. Check your credentials and try again.' : forbidden ? 'You don’t have permission to view this page.' : 'The page you’re looking for doesn’t exist or has moved.'}</p>
+        <a className="button-primary" href={forbidden ? '/login' : '/'}><FiArrowLeft aria-hidden="true" /> {forbidden ? 'Back to sign in' : 'Back to dashboard'}</a>
       </div>
     </main>
   );
